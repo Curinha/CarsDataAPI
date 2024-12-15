@@ -1,7 +1,4 @@
-fastapi
-google-api-python-client
-pydantic
-python-jose
-python-decouple
-uvicorn
-redis
+fastapi==0.111.1
+google-api-python-client==2.155.0
+pydantic==2.8.2
+uvicorn==0.30.3
