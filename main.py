@@ -24,7 +24,7 @@ class Token(BaseModel):
 # Endpoint para obtener el token
 @app.post("/token", response_model=Token)
 @limiter.limit("5/minute")  # Máximo 5 solicitudes por minuto
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def get_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     if form_data.username != ADMIN_USERNAME or form_data.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
@@ -38,7 +38,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # Endpoint para obtener la lista de marcas
 @app.get("/brands")
 @limiter.limit("10/minute")  # Máximo 10 solicitudes por minuto
-async def get_unique_brands(verified_token: dict = Depends(verify_token)):
+async def get_unique_brands(request: Request, verified_token: dict = Depends(verify_token)):
     try:
         # Construir servicio de Google Sheets
         service = build("sheets", "v4", credentials=GOOGLE_CREDENTIALS)
