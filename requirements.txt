@@ -1,0 +1,7 @@
+fastapi
+google-api-python-client
+pydantic
+python-jose
+python-decouple
+uvicorn
+redis
