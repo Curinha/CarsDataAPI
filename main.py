@@ -12,7 +12,7 @@ from config import JWT_EXPIRATION_MINUTES, ADMIN_USERNAME, ADMIN_PASSWORD
 
 # Crear la app de FastAPI
 app = FastAPI()
-limiter = Limiter(key_func=get_remote_address, default_limits=["5/minute"])
+limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
 # Modelo del token
@@ -20,13 +20,10 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-# Limite de peticiones global
-@app.middleware("http")
-async def rate_limit_middleware(request, call_next):
-    return await limiter(request, call_next)
 
 # Endpoint para obtener el token
 @app.post("/token", response_model=Token)
+@limiter.limit("5/minute")  # Máximo 5 solicitudes por minuto
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     if form_data.username != ADMIN_USERNAME or form_data.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=400, detail="Invalid credentials")
@@ -40,6 +37,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 # Endpoint para obtener la lista de marcas
 @app.get("/brands")
+@limiter.limit("10/minute")  # Máximo 10 solicitudes por minuto
 async def get_unique_brands(verified_token: dict = Depends(verify_token)):
     try:
         # Construir servicio de Google Sheets
