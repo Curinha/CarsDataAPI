@@ -22,9 +22,8 @@ class Token(BaseModel):
 
 # Limite de peticiones global
 @app.middleware("http")
-async def add_rate_limiter(request: Request, call_next):
-    with limiter.key(request.client.host):
-        return await call_next(request)
+async def rate_limit_middleware(request, call_next):
+    return await limiter(request, call_next)
 
 # Endpoint para obtener el token
 @app.post("/token", response_model=Token)
