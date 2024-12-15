@@ -1,5 +1,6 @@
-fastapi==0.111.1
 google-api-python-client==2.155.0
 pydantic==2.8.2
-uvicorn==0.30.3
 PyJWT==2.10.1
+slowapi==0.1.9
+fastapi==0.111.1
+uvicorn==0.30.3
