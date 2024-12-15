@@ -12,9 +12,15 @@ from datetime import timedelta
 from config import JWT_EXPIRATION_MINUTES, ADMIN_USERNAME, ADMIN_PASSWORD
 
 # Crear la app de FastAPI
-app = FastAPI()
+app = FastAPI(
+    title="TengoLugarCarsAPI",  # Set custom title
+    description="API for consulting DNRPA cars data",  # Optional description
+    version="1.0.0",  # Optional version
+    openapi_url="/openapi.json",
+)
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
+
 
 # Modelo del token
 class Token(BaseModel):
@@ -23,9 +29,11 @@ class Token(BaseModel):
 
 
 # Endpoint para obtener el token
-@app.post("/login", response_model=Token)
+@app.post("/login", response_model=Token, include_in_schema=False)
 @limiter.limit("5/minute")  # Máximo 5 solicitudes por minuto
-async def get_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+async def get_access_token(
+    request: Request, form_data: OAuth2PasswordRequestForm = Depends()
+):
     if form_data.username != ADMIN_USERNAME or form_data.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
@@ -36,8 +44,14 @@ async def get_access_token(request: Request, form_data: OAuth2PasswordRequestFor
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 # Endpoint para consultar datos
-@app.get("/brands", dependencies=[Depends(get_current_user)])
+@app.get(
+    "/brands",
+    tags=["Brands"],
+    operation_id="getUniqueBrands",
+    dependencies=[Depends(get_current_user)],
+)
 @limiter.limit("5/minute")  # Permite 5 solicitudes por minuto por IP
 async def get_unique_brands(
     request: Request,
