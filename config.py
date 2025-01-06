@@ -25,5 +25,7 @@ ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", default="TengoLugar")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", default="supersecurepassword")
 
 # Variables estáticas
-SHEET_NAME = "Cars"
-BRANDS_COLUMN = "Marca"
+SHEET_MODELS = "Modelos"
+SHEET_BRANDS = "Marcas"
+ID_COLUMN = "id"
+BRANDS_COLUMN = "marca"
