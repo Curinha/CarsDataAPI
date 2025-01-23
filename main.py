@@ -56,6 +56,12 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+######## Main Page #########
+@app.get("/")
+async def redirect_to_login():
+    return RedirectResponse(url="/login")
+
+
 ######## Login GET #########
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 async def login_form(request: Request):
