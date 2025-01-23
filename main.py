@@ -1,11 +1,11 @@
 import base64
 from datetime import timedelta
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.security import OAuth2PasswordRequestForm
+
+# from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from fastapi.openapi.utils import get_openapi
 from fastapi.templating import Jinja2Templates
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -17,11 +17,15 @@ from auth import create_access_token, decode_access_token, get_current_user
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
-    BRANDS_COLUMN,
+    BRAND_ID_COLUMN,
     GOOGLE_CREDENTIALS,
+    GROUP_ID_COLUMN,
     ID_COLUMN,
     JWT_EXPIRATION_MINUTES,
+    MODEL_ID_COLUMN,
+    NAME_COLUMN,
     SHEET_BRANDS,
+    SHEET_DATA,
     SPREADSHEET_ID,
 )
 
@@ -48,6 +52,10 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
 ######## Login GET #########
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 async def login_form(request: Request):
@@ -57,33 +65,40 @@ async def login_form(request: Request):
 ######## Login POST #########
 @app.post("/login", response_model=Token, include_in_schema=False)
 @limiter.limit("5/minute")
-async def get_access_token(request: Request):
-
+async def get_access_token(
+    request: Request,
+    username: str = Form(None),  # Accept form data
+    password: str = Form(None),
+):
     auth_header = request.headers.get("Authorization")
-    
-    if not auth_header or not auth_header.startswith("Basic "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Basic Auth header")
 
-    # Extraer y decodificar credenciales
-    encoded_credentials = auth_header.split(" ")[1]  # Obtener la parte después de "Basic "
-    decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
-    
-    # Separar username y password
-    username, password = decoded_credentials.split(":", 1)
-    
+    # OPTION 1: Basic Auth (if Authorization header exists)
+    if auth_header and auth_header.startswith("Basic "):
+        try:
+            encoded_credentials = auth_header.split(" ")[1]
+            decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+            username, password = decoded_credentials.split(":", 1)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Error decoding credentials: {str(e)}"
+            )
+
+    # OPTION 2: Form-based login
+    elif not username or not password:
+        raise HTTPException(status_code=400, detail="Missing credentials")
+
+    # Validate credentials
     if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Crear access token
+    # Generate tokens
     access_token = create_access_token(
         data={"sub": username},
         expires_delta=timedelta(minutes=JWT_EXPIRATION_MINUTES),
     )
-
-    # Crear refresh token
     refresh_token = create_access_token(
         data={"sub": username},
-        expires_delta=timedelta(days=1),  # Refresh token válido por 1 día
+        expires_delta=timedelta(days=1),
     )
 
     # Verificar el Accept Header para decidir la respuesta
@@ -108,22 +123,27 @@ async def get_access_token(request: Request):
 # Endpoint para refrescar el token de acceso
 @app.post("/refresh", response_model=Token, include_in_schema=False)
 @limiter.limit("5/minute")
-async def refresh_access_token(
-    request: Request,
-    token: str = Body(...),  # Recibe el refresh token como entrada
-):
-    # Decodificar y validar el refresh token
+async def refresh_access_token(request: Request, token_data: RefreshTokenRequest):
+    # Extract the token from the request body
+    token = token_data.refresh_token
+
+    # Decode and validate the refresh token
     payload = decode_access_token(token)
     username = payload.get("sub")
     if not username:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    # Crear un nuevo access token
+    # Create a new access token
     new_access_token = create_access_token(
         data={"sub": username},
         expires_delta=timedelta(minutes=JWT_EXPIRATION_MINUTES),
     )
-    return {"access_token": new_access_token, "token_type": "bearer"}
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": token,  # Keep the existing refresh token
+        "token_type": "bearer",
+    }
 
 
 # Endpoint para consultar datos
@@ -154,10 +174,10 @@ async def get_unique_brands(
 
         # Extraer el índice de la columna "Marcas"
         headers = values[0]  # Primera fila contiene los encabezados
-        if BRANDS_COLUMN not in headers:
+        if NAME_COLUMN not in headers:
             raise HTTPException(
                 status_code=400,
-                detail=f"Columna '{BRANDS_COLUMN}' no encontrada en el archivo.",
+                detail=f"Columna '{NAME_COLUMN}' no encontrada en el archivo.",
             )
         elif ID_COLUMN not in headers:
             raise HTTPException(
@@ -166,7 +186,7 @@ async def get_unique_brands(
             )
 
         # Obtener los índices de las columnas requeridas
-        brand_index = headers.index(BRANDS_COLUMN)
+        brand_index = headers.index(NAME_COLUMN)
         id_index = headers.index(ID_COLUMN)
 
         # Procesar las filas restantes y construir la lista de diccionarios
@@ -177,6 +197,236 @@ async def get_unique_brands(
                 brand = row[brand_index]
                 id_value = int(row[id_index])
                 brands_list.append({"id": id_value, "name": brand})
-        return brands_list
+        return {"success": True, "data": brands_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/groups",
+    tags=["Groups"],
+    operation_id="getGroupsByBrand",
+    dependencies=[Depends(get_current_user)],
+)
+@limiter.limit("5/minute")  # Permite 5 solicitudes por minuto por IP
+async def get_models_by_brand(
+    request: Request,
+    brandId: int = Query(
+        ..., description="ID de la marca para filtrar grupos"
+    ),  # Parámetro obligatorio
+):
+    try:
+        # Construir servicio de Google Sheets
+        credentials = Credentials.from_service_account_info(GOOGLE_CREDENTIALS)
+        service = build("sheets", "v4", credentials=credentials)
+        sheet = service.spreadsheets()
+
+        # Leer datos de la hoja
+        result = (
+            sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=SHEET_DATA).execute()
+        )
+        values = result.get("values", [])
+
+        if not values:
+            return {"message": "No se encontraron datos."}
+
+        # Extraer encabezados
+        headers = values[0]
+
+        # Verificar que las columnas requeridas existen
+        if "group" not in headers:
+            raise HTTPException(
+                status_code=400, detail="Columna 'group' no encontrada."
+            )
+        if "group_id" not in headers:
+            raise HTTPException(
+                status_code=400, detail="Columna 'group_id' no encontrada."
+            )
+        if BRAND_ID_COLUMN not in headers:
+            raise HTTPException(
+                status_code=400, detail=f"Columna '{BRAND_ID_COLUMN}' no encontrada."
+            )
+
+        # Obtener los índices de las columnas
+        name_index = headers.index("group")
+        id_index = headers.index("group_id")
+        brand_id_index = headers.index(BRAND_ID_COLUMN)
+
+        # Filtrar modelos según brandId y construir la lista de respuesta
+        groups_list = []
+        for row in values[1:]:  # Excluir encabezado
+            if len(row) > max(name_index, id_index, brand_id_index):
+                group_name = row[name_index]
+                group_id = row[id_index]  # TODO ver si es necesario convertir a int
+                group_brand_id = row[
+                    brand_id_index
+                ]  # TODO ver si es necesario convertir a int
+                if (
+                    str(group_brand_id) == str(brandId)
+                    and group_id != ""
+                    and group_id not in [group["id"] for group in groups_list]
+                ):
+                    groups_list.append(
+                        {"id": group_id, "name": group_name, "brandId": group_brand_id}
+                    )
+
+        if not groups_list:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No se encontraron modelos para brandId={brandId}",
+            )
+
+        return {"success": True, "data": groups_list}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/models",
+    tags=["Models"],
+    operation_id="getModelsByBrandAndGroup",
+    dependencies=[Depends(get_current_user)],
+)
+@limiter.limit("5/minute")  # Límite de solicitudes por IP
+async def get_models_by_brand_and_group(
+    request: Request,
+    brandId: int = Query(..., description="ID de la marca para filtrar modelos"),
+    groupId: int = Query(..., description="ID del grupo para filtrar modelos"),
+):
+    try:
+        # Construir servicio de Google Sheets
+        credentials = Credentials.from_service_account_info(GOOGLE_CREDENTIALS)
+        service = build("sheets", "v4", credentials=credentials)
+        sheet = service.spreadsheets()
+
+        # Leer datos de la hoja
+        result = (
+            sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=SHEET_DATA).execute()
+        )
+        values = result.get("values", [])
+
+        if not values:
+            return {"message": "No se encontraron datos."}
+
+        # Extraer encabezados
+        headers = values[0]
+
+        # Verificar que las columnas requeridas existen
+        required_columns = ["model", "model_id", BRAND_ID_COLUMN, GROUP_ID_COLUMN]
+        for column in required_columns:
+            if column not in headers:
+                raise HTTPException(
+                    status_code=400, detail=f"Columna '{column}' no encontrada."
+                )
+
+        # Obtener los índices de las columnas
+        name_index = headers.index("model")
+        id_index = headers.index("model_id")
+        brand_id_index = headers.index(BRAND_ID_COLUMN)
+        group_id_index = headers.index(GROUP_ID_COLUMN)
+
+        # Filtrar modelos según brandId y groupId
+        models_list = []
+        for row in values[1:]:  # Excluir encabezado
+            if len(row) > max(name_index, id_index, brand_id_index, group_id_index):
+                model_name = row[name_index]
+                model_id = row[id_index]
+                model_brand_id = row[brand_id_index]
+                model_group_id = row[group_id_index]
+
+                # Filtrar por brandId y groupId
+                if (
+                    str(model_brand_id) == str(brandId)
+                    and str(model_group_id) == str(groupId)
+                    and model_id != ""
+                    and model_id not in [model["id"] for model in models_list]
+                ):
+                    models_list.append(
+                        {
+                            "id": int(model_id),
+                            "name": model_name,
+                            "brandId": int(model_brand_id),
+                            "groupId": int(model_group_id),
+                        }
+                    )
+
+        if not models_list:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No se encontraron modelos para brandId={brandId} y groupId={groupId}",
+            )
+
+        return {"success": True, "data": models_list}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/models/{id}",
+    tags=["Models"],
+    operation_id="getModelDetails",
+    dependencies=[Depends(get_current_user)],
+)
+@limiter.limit("5/minute")  # Límite de solicitudes por IP
+async def get_model_details(request: Request, id: int):
+    try:
+        # Construir servicio de Google Sheets
+        credentials = Credentials.from_service_account_info(GOOGLE_CREDENTIALS)
+        service = build("sheets", "v4", credentials=credentials)
+        sheet = service.spreadsheets()
+
+        # Leer datos de la hoja
+        result = (
+            sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=SHEET_DATA).execute()
+        )
+        values = result.get("values", [])
+
+        if not values:
+            return {"message": "No se encontraron datos."}
+
+        # Extraer encabezados
+        headers = values[0]
+        rows = values[1:]
+
+        # Crear un mapeo dinámico entre encabezados y valores
+        for row in rows:
+            row_data = dict(zip(headers, row))  # Combinar encabezados con valores
+
+            # Verificar si el modelo coincide con el ID solicitado
+            if str(row_data.get(MODEL_ID_COLUMN)) == str(id):
+                # Construir la respuesta
+                available_years = [
+                    int(year.strip())
+                    for year in row_data.get("available_years", "").split(",")
+                ]
+                fuel_efficiency = float(
+                    row_data.get("fuel_efficiency", "0").replace(",", ".")
+                )
+                return {
+                    "success": True,
+                    "data": {
+                        "id": int(row_data[MODEL_ID_COLUMN]),
+                        "name": row_data["model"],
+                        "type": row_data["type"],
+                        "fuelEfficiency": fuel_efficiency,
+                        "brand": {
+                            "id": int(row_data[BRAND_ID_COLUMN]),
+                            "name": row_data["brand"],
+                        },
+                        "group": {
+                            "id": int(row_data[GROUP_ID_COLUMN]),
+                            "name": row_data["group"],
+                        },
+                        "years": available_years,
+                    },
+                }
+
+        # Si no se encuentra el modelo
+        raise HTTPException(
+            status_code=404, detail=f"Modelo con id={id} no encontrado."
+        )
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
