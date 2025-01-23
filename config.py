@@ -23,10 +23,6 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM")
 JWT_EXPIRATION_MINUTES = int(os.getenv("JWT_EXPIRATION_MINUTES"))
 
-# Administradores
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", default="TengoLugar")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", default="supersecurepassword")
-
 # Variables estáticas
 SHEET_MODELS = "Models"
 SHEET_BRANDS = "Brands"
