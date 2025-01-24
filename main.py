@@ -404,10 +404,14 @@ async def get_model_details(request: Request, id: int):
             if str(row_data.get(MODEL_ID_COLUMN)) == str(id):
                 # Construir la respuesta
                 available_years = [
-                    int(year.strip()) for year in row_data.get("available_years", "").split(",") if year.strip().isdigit()
-                ] # Filtrar años válidos
+                    int(year.strip())
+                    for year in row_data.get("available_years", "").split(",")
+                    if year.strip().isdigit()
+                ]  # Filtrar años válidos
                 try:
-                    fuel_efficiency = float(row_data.get("fuel_efficiency", "0").replace(",", "."))
+                    fuel_efficiency = float(
+                        row_data.get("fuel_efficiency", "0").replace(",", ".")
+                    )
                 except ValueError:
                     fuel_efficiency = 0.0  # Valor por defecto en caso de valores vacíos o no numéricos
                 return {
