@@ -319,7 +319,7 @@ async def get_models_by_brand_and_group(
         headers = values[0]
 
         # Verificar que las columnas requeridas existen
-        required_columns = ["model", "model_id", BRAND_ID_COLUMN, GROUP_ID_COLUMN]
+        required_columns = ["model", MODEL_ID_COLUMN, BRAND_ID_COLUMN, GROUP_ID_COLUMN]
         for column in required_columns:
             if column not in headers:
                 raise HTTPException(
@@ -328,7 +328,7 @@ async def get_models_by_brand_and_group(
 
         # Obtener los índices de las columnas
         name_index = headers.index("model")
-        id_index = headers.index("model_id")
+        id_index = headers.index(MODEL_ID_COLUMN)
         brand_id_index = headers.index(BRAND_ID_COLUMN)
         group_id_index = headers.index(GROUP_ID_COLUMN)
 
@@ -404,12 +404,12 @@ async def get_model_details(request: Request, id: int):
             if str(row_data.get(MODEL_ID_COLUMN)) == str(id):
                 # Construir la respuesta
                 available_years = [
-                    int(year.strip())
-                    for year in row_data.get("available_years", "").split(",")
-                ]
-                fuel_efficiency = float(
-                    row_data.get("fuel_efficiency", "0").replace(",", ".")
-                )
+                    int(year.strip()) for year in row_data.get("available_years", "").split(",") if year.strip().isdigit()
+                ] # Filtrar años válidos
+                try:
+                    fuel_efficiency = float(row_data.get("fuel_efficiency", "0").replace(",", "."))
+                except ValueError:
+                    fuel_efficiency = 0.0  # Valor por defecto en caso de valores vacíos o no numéricos
                 return {
                     "success": True,
                     "data": {
