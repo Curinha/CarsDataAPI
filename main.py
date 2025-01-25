@@ -420,6 +420,7 @@ async def get_model_details(request: Request, id: int):
                         "id": int(row_data[MODEL_ID_COLUMN]),
                         "name": row_data["model"],
                         "type": row_data["type"],
+                        "fuelType": row_data["fuel_type"],
                         "fuelEfficiency": fuel_efficiency,
                         "brand": {
                             "id": int(row_data[BRAND_ID_COLUMN]),
