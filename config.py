@@ -35,6 +35,5 @@ SHEET_DATA = "Data"
 MODEL_ID_COLUMN = "model_id"
 BRAND_ID_COLUMN = "brand_id"
 GROUP_ID_COLUMN = "group_id"
-ID_COLUMN = "id"
 NAME_COLUMN = "name"
 

@@ -20,7 +20,6 @@ from config import (
     BRAND_ID_COLUMN,
     GOOGLE_CREDENTIALS,
     GROUP_ID_COLUMN,
-    ID_COLUMN,
     JWT_EXPIRATION_MINUTES,
     MODEL_ID_COLUMN,
     NAME_COLUMN,
@@ -182,18 +181,18 @@ async def get_unique_brands(
         headers = values[0]  # Primera fila contiene los encabezados
         if NAME_COLUMN not in headers:
             raise HTTPException(
-                status_code=400,
+                status_code=500,
                 detail=f"Columna '{NAME_COLUMN}' no encontrada en el archivo.",
             )
-        elif ID_COLUMN not in headers:
+        elif BRAND_ID_COLUMN not in headers:
             raise HTTPException(
-                status_code=400,
-                detail=f"Columna '{ID_COLUMN}' no encontrada en el archivo.",
+                status_code=500,
+                detail=f"Columna '{BRAND_ID_COLUMN}' no encontrada en el archivo.",
             )
 
         # Obtener los índices de las columnas requeridas
         brand_index = headers.index(NAME_COLUMN)
-        id_index = headers.index(ID_COLUMN)
+        id_index = headers.index(BRAND_ID_COLUMN)
 
         # Procesar las filas restantes y construir la lista de diccionarios
         brands_list = []
