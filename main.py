@@ -402,25 +402,17 @@ async def get_model_details(request: Request, id: int):
             # Verificar si el modelo coincide con el ID solicitado
             if str(row_data.get(MODEL_ID_COLUMN)) == str(id):
                 # Construir la respuesta
-                available_years = [
-                    int(year.strip())
-                    for year in row_data.get("available_years", "").split(",")
-                    if year.strip().isdigit()
-                ]  # Filtrar años válidos
-                try:
-                    fuel_efficiency = float(
-                        row_data.get("fuel_efficiency", "0").replace(",", ".")
-                    )
-                except ValueError:
-                    fuel_efficiency = 0.0  # Valor por defecto en caso de valores vacíos o no numéricos
                 return {
                     "success": True,
                     "data": {
                         "id": int(row_data[MODEL_ID_COLUMN]),
                         "name": row_data["model"],
                         "type": row_data["type"],
-                        "fuelType": row_data["fuel_type"],
-                        "fuelEfficiency": fuel_efficiency,
+                        "fuelType": row_data.get("fuel_type") if row_data.get("fuel_type") else None,
+                        "fuelEfficiency": (
+                            float(str(row_data.get("fuel_efficiency", "0")).replace(",", ".")) 
+                            if row_data.get("fuel_efficiency") else None
+                        ),
                         "brand": {
                             "id": int(row_data[BRAND_ID_COLUMN]),
                             "name": row_data["brand"],
@@ -429,7 +421,6 @@ async def get_model_details(request: Request, id: int):
                             "id": int(row_data[GROUP_ID_COLUMN]),
                             "name": row_data["group"],
                         },
-                        "years": available_years,
                     },
                 }
 
