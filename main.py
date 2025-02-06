@@ -431,3 +431,70 @@ async def get_model_details(request: Request, id: int):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Endpoint para hacer un post en GoogleSheets (Data sheet) a partir de model_id (posteando fuel_type y fuel_efficiency)
+@app.post(
+    "/models/{id}",
+    tags=["Models"],
+    operation_id="updateModelDetails",
+    dependencies=[Depends(get_current_user)],
+)
+@limiter.limit("5/minute")  # Límite de solicitudes por IP
+async def update_model_details(
+    request: Request,
+    id: int,
+    fuelType: str = Query(None, description="Tipo de combustible"),
+    fuelEfficiency: float = Query(None, description="Eficiencia de combustible"),
+):
+    try:
+        # Construir servicio de Google Sheets
+        credentials = Credentials.from_service_account_info(GOOGLE_CREDENTIALS)
+        service = build("sheets", "v4", credentials=credentials)
+        sheet = service.spreadsheets()
+
+        # Leer datos de la hoja
+        result = (
+            sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=SHEET_DATA).execute()
+        )
+        values = result.get("values", [])
+
+        if not values:
+            return {"message": "No se encontraron datos."}
+
+        # Extraer encabezados
+        headers = values[0]
+        rows = values[1:]
+
+        # Crear un mapeo dinámico entre encabezados y valores
+        for row in rows:
+            row_data = dict(zip(headers, row))  # Combinar encabezados con valores
+
+            # Verificar si el modelo coincide con el ID solicitado
+            if str(row_data.get(MODEL_ID_COLUMN)) == str(id):
+                # Actualizar los valores de fuelType y fuelEfficiency
+                row_data["fuel_type"] = fuelType
+                row_data["fuel_efficiency"] = str(fuelEfficiency)
+
+                # Actualizar la fila en Google Sheets
+                body = {"values": [list(row_data.values())]}
+                result = (
+                    sheet.values()
+                    .update(
+                        spreadsheetId=SPREADSHEET_ID,
+                        range=f"{SHEET_DATA}!A{rows.index(row)+2}",
+                        valueInputOption="USER_ENTERED", # Para que GoogleSheets interprete los valores como float
+                        body=body,
+                    )
+                    .execute()
+                )
+
+                return {"success": True, "message": "Modelo actualizado correctamente."}
+
+        # Si no se encuentra el modelo
+        raise HTTPException(
+            status_code=404, detail=f"Modelo con id={id} no encontrado."
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
