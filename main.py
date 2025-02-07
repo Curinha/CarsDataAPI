@@ -402,17 +402,30 @@ async def get_model_details(request: Request, id: int):
             # Verificar si el modelo coincide con el ID solicitado
             if str(row_data.get(MODEL_ID_COLUMN)) == str(id):
                 # Construir la respuesta
+                try:
+                    fuel_efficiency = row_data.get("fuel_efficiency", "0")
+                    if fuel_efficiency:
+                        fuel_efficiency = float(fuel_efficiency.replace(",", "."))
+                    else:
+                        fuel_efficiency = (
+                            0.0  # Valor por defecto si está vacío o no numérico
+                        )
+                except ValueError:
+                    fuel_efficiency = (
+                        0.0  # Valor por defecto en caso de error de conversión
+                    )
+
+                fuel_type = (
+                    row_data.get("fuel_type", "").strip().lower()
+                )  # Usar strip() por si hay espacios extra
+
                 return {
                     "success": True,
                     "data": {
                         "id": int(row_data[MODEL_ID_COLUMN]),
                         "name": row_data["model"],
-                        "type": row_data["type"],
-                        "fuelType": row_data.get("fuel_type") if row_data.get("fuel_type") else None,
-                        "fuelEfficiency": (
-                            float(str(row_data.get("fuel_efficiency", "0")).replace(",", ".")) 
-                            if row_data.get("fuel_efficiency") else None
-                        ),
+                        "fuelType": fuel_type,  # Usamos la variable con manejo seguro
+                        "fuelEfficiency": fuel_efficiency,
                         "brand": {
                             "id": int(row_data[BRAND_ID_COLUMN]),
                             "name": row_data["brand"],
@@ -472,9 +485,19 @@ async def update_model_details(
 
             # Verificar si el modelo coincide con el ID solicitado
             if str(row_data.get(MODEL_ID_COLUMN)) == str(id):
-                # Actualizar los valores de fuelType y fuelEfficiency
-                row_data["fuel_type"] = fuelType
-                row_data["fuel_efficiency"] = str(fuelEfficiency)
+                # Asegúrate de que fuelType y fuelEfficiency no sean None
+                if fuelType is not None:
+                    row_data["fuel_type"] = fuelType
+                else:
+                    return {"success": False, "message": "fuelType no puede ser None"}
+
+                if fuelEfficiency is not None:
+                    row_data["fuel_efficiency"] = str(fuelEfficiency)
+                else:
+                    return {
+                        "success": False,
+                        "message": "fuelEfficiency no puede ser None",
+                    }
 
                 # Actualizar la fila en Google Sheets
                 body = {"values": [list(row_data.values())]}
@@ -482,8 +505,8 @@ async def update_model_details(
                     sheet.values()
                     .update(
                         spreadsheetId=SPREADSHEET_ID,
-                        range=f"{SHEET_DATA}!A{rows.index(row)+2}",
-                        valueInputOption="USER_ENTERED", # Para que GoogleSheets interprete los valores como float
+                        range=f"{SHEET_DATA}!A{rows.index(row) + 2}",
+                        valueInputOption="USER_ENTERED",  # Para que GoogleSheets interprete los valores como float
                         body=body,
                     )
                     .execute()
