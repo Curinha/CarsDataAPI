@@ -445,6 +445,58 @@ async def get_model_details(request: Request, id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Endpoint para encontrar un modelo segun brand y model
+@app.get(
+    "/models/search",
+    tags=["Models"],
+    operation_id="searchModels",
+    dependencies=[Depends(get_current_user)],
+)
+@limiter.limit("5/minute")
+async def search_models(
+    request: Request,
+    brand: str = Query(..., description="Nombre de la marca"),
+    model: str = Query(..., description="Nombre del modelo")
+):
+    try:
+        credentials = Credentials.from_service_account_info(GOOGLE_CREDENTIALS)
+        service = build("sheets", "v4", credentials=credentials)
+        sheet = service.spreadsheets()
+
+        result = sheet.values().get(
+            spreadsheetId=SPREADSHEET_ID, 
+            range=SHEET_DATA
+        ).execute()
+        values = result.get("values", [])
+
+        if not values:
+            return {"message": "No se encontraron datos."}
+
+        headers = values[0]
+        rows = values[1:]
+
+        matching_models = []
+        for row in rows:
+            row_data = dict(zip(headers, row))
+            
+            if (row_data.get("brand", "").lower() == brand.lower() and 
+                row_data.get("model", "").lower() == model.lower()):
+                matching_models.append({
+                    "id": int(row_data[MODEL_ID_COLUMN]),
+                    "name": row_data["model"],
+                    "brand": row_data["brand"]
+                })
+
+        if not matching_models:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No se encontraron modelos para marca={brand} y modelo={model}"
+            )
+
+        return {"success": True, "data": matching_models}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Endpoint para hacer un post en GoogleSheets (Data sheet) a partir de model_id (posteando fuel_type y fuel_efficiency)
 @app.post(
