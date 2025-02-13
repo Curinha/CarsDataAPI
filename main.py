@@ -447,7 +447,7 @@ async def get_model_details(request: Request, id: int):
 
 # Endpoint para encontrar un modelo segun brand y model
 @app.get(
-    "/models/search",
+    "/search/models",  # Cambiado de /models/search a /search/models
     tags=["Models"],
     operation_id="searchModels",
     dependencies=[Depends(get_current_user)],
